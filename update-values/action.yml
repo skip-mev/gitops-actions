@@ -44,7 +44,7 @@ runs:
         json_string=$(echo $json_string | sed "s/'/\"/g")
 
         # Generate update commands from JSON
-        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | "." + .key + " |= \"" + .value + "\""' -o json)
+        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | .key + " |= \"" + .value + "\""' -o json)
 
         # Apply each update command to the YAML file
         echo "$updates" | while read -r update; do
