@@ -40,10 +40,11 @@ runs:
         IMAGE_TAG=${{ github.sha }}
         cd manifests/$SERVICE_NAME
 
-        json_string=$(echo '${{ inputs.modified_values }}}' | sed "s/'/\"/g")
+        json_string="${{ inputs.modified_values }}"
+        json_string=$(echo $json_string | sed "s/'/\"/g")
 
         # Generate update commands from JSON
-        updates=$(echo '$json_string' | yq -r e -f json '. | to_entries | .[] | "." + .key + " |= \"" + .value + "\""' -o json)
+        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | "." + .key + " |= \"" + .value + "\""' -o json)
 
         # Apply each update command to the YAML file
         echo "$updates" | while read -r update; do
