@@ -34,6 +34,7 @@ runs:
         sudo wget https://github.com/mikefarah/yq/releases/download/v4.6.0/yq_linux_amd64 -O /usr/bin/yq
         sudo chmod +x /usr/bin/yq
     - name: Update Helm values
+      shell: bash
       run: |
         SERVICE_NAME=${{ inputs.service }}
         IMAGE_TAG=${{ github.sha }}
