@@ -23,11 +23,11 @@ runs:
       uses: actions/checkout@v3
       with:
         repository: ${{ inputs.manifests_repo }}
-        ssh-key: ${{ secrets.MANIFESTS_DEPLOY_KEY }}
+        ssh-key: ${{ inputs.deploy_key }}
         path: manifests
     - uses: webfactory/ssh-agent@v0.9.0
       with:
-        ssh-private-key: ${{ secrets.MANIFESTS_DEPLOY_KEY }}
+        ssh-private-key: ${{ inputs.deploy_key }}
     - name: Install yq
       run: |
         sudo wget https://github.com/mikefarah/yq/releases/download/v4.6.0/yq_linux_amd64 -O /usr/bin/yq
@@ -35,7 +35,6 @@ runs:
     - name: Update Helm values
       run: |
         SERVICE_NAME=${{ inputs.service }}
-        IMAGE_TAG=${{ github.sha }}
         cd manifests/$SERVICE_NAME
 
         json_string=$(echo ${{ inputs.modified_values }}} | sed "s/'/\"/g")
@@ -55,7 +54,7 @@ runs:
         git config --global user.email "deployooooooooor[bot]@users.noreply.github.com"
         git add .
         git commit -m "Update $SERVICE_NAME image to $IMAGE_TAG"
-        git push git@github.com:skip-mev/slinky-manifests main
+        git push git@github.com:${{ inputs.manifests_repo }} main
     # - name: Update Helm values
     #   if: github.event.client_payload.environment == 'prod'
     #   run: |
