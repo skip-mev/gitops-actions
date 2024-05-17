@@ -3,8 +3,11 @@ inputs:
   service:
     description: 'Service to deploy'
     required: true
-  deploy_key:
-    description: 'SSH deploy key'
+  app_id:
+    description: "Deploy app ID"
+    required: true
+  app_private_key:
+    description: 'Deploy app private key'
     required: true
   manifests_repo:
     description: 'Manifests repository'
@@ -19,15 +22,19 @@ inputs:
 runs:
   using: composite
   steps:
+    - uses: actions/create-github-app-token@v1
+      id: app-token
+      with:
+        app-id: ${{ inputs.app_id }}
+        private-key: ${{ inputs.app_private_key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ inputs.manifests_repo }}
     - name: Checkout manifests repo
       uses: actions/checkout@v3
       with:
         repository: ${{ inputs.manifests_repo }}
-        ssh-key: ${{ inputs.deploy_key }}
+        token: ${{ steps.app-token.outputs.token }}
         path: manifests
-    - uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ inputs.deploy_key }}
     - name: Install yq
       shell: bash
       run: |
@@ -35,6 +42,8 @@ runs:
         sudo chmod +x /usr/bin/yq
     - name: Update Helm values
       shell: bash
+      with:
+        GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         SERVICE_NAME=${{ inputs.service }}
         IMAGE_TAG=${{ github.sha }}
