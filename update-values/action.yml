@@ -42,8 +42,6 @@ runs:
         sudo chmod +x /usr/bin/yq
     - name: Update Helm values
       shell: bash
-      with:
-        GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         SERVICE_NAME=${{ inputs.service }}
         IMAGE_TAG=${{ github.sha }}
