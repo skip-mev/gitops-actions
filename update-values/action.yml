@@ -75,10 +75,23 @@ runs:
       shell: bash
       if: github.event.client_payload.environment != 'dev'
       run: |
-        SERVICE_NAME=${{ github.event.client_payload.service }}
-        IMAGE_TAG=${{ github.event.client_payload.tag }}
-        cd $SERVICE_NAME
-        yq eval ".image.tag = \"$IMAGE_TAG\"" -i values.yaml
+        SERVICE_NAME=${{ inputs.service }}
+        IMAGE_TAG=${{ github.sha }}
+        cd manifests/$SERVICE_NAME
+
+        json_string="${{ inputs.modified_values }}"
+        json_string=$(echo $json_string | sed "s/'/\"/g")
+
+        # Generate update commands from JSON
+        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | .key + " |= \"" + .value + "\""' -o json)
+
+        # Apply each update command to the YAML file
+        echo "$updates" | while read -r update; do
+            if [[ ! -z "$update" ]]; then
+                echo $update
+                yq e -i "$update" ${{ inputs.values_file_name }}
+            fi
+        done
     - name: Create Pull Request
       id: cpr
       uses: peter-evans/create-pull-request@v6
