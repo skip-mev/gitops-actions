@@ -108,7 +108,7 @@ runs:
         gh auth login --with-token < token.txt
 
         gh pr create \
-          --body "Promoting `${{ inputs.service }}` (version `${{ github.ref }}`) to `${{ inputs.environment }}`." \
+          --body "Promoting ${{ inputs.service }} (version ${{ github.ref }}) to ${{ inputs.environment }}." \
           --title "chore(${{ inputs.service }}): Promote to ${{ github.ref }}" \
           --head "$BRANCH_NAME" \
           --base "main"
