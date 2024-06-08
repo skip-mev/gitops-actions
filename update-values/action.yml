@@ -2,7 +2,8 @@ name: Setup auth
 inputs:
   environment:
     description: 'Environment to deploy in'
-    required: true
+    required: false
+    default: 'dev'
   service:
     description: 'Service to deploy'
     required: true
