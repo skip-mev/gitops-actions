@@ -29,6 +29,7 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -61,13 +62,3 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=branch
             type=ref,event=pr
-
-  steps:
-      - name: Check out the repo
-        if: github.event_name != 'pull_request'
-        uses: actions/checkout@v4
-      - name: Check out the PR commit head
-        uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
