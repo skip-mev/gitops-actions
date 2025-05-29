@@ -1,0 +1,73 @@
+name: Reusable docker build workflow
+on:
+  workflow_call:
+    inputs:
+      foo:
+        description: 'A placeholder input for the reusable workflow'
+        required: false
+        type: string
+      # environment:
+      #   description: 'The environment to build for'
+      #   required: true
+      #   type: string
+      # tailscale_id:
+      #   description: 'Tailscale ID for the build'
+      #   required: true
+      #   type: string
+      # tailscale_secret:
+      #   description: 'Tailscale secret for the build'
+      #   required: true
+      #   type: string
+      # aws_access_key_id:
+      #   description: 'AWS Access Key ID for ECR access'
+      #   required: true
+      #   type: string
+      # aws_secret_access_key:
+      #   description: 'AWS Secret Access Key for ECR access'
+      #   required: true
+      #   type: string
+
+jobs:
+  build:
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Setup the pipeline
+        uses: ./.github/actions/setup
+        with:
+          environment: ${{ inputs.environment }}
+          tailscale_id: ${{ inputs.tailscale_id }}
+          tailscale_secret: ${{ inputs.tailscale_secret }}
+          aws_access_key_id: ${{ inputs.aws_access_key_id }}
+          aws_secret_access_key: ${{ inputs.aws_secret_access_key }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Create ECR repository if it does not exist
+        run: |
+          aws ecr describe-repositories --region us-east-2 --repository-names $repo_name || aws ecr create-repository --repository-name $repo_name --region us-east-2
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: true
+        with:
+          images: |
+            ${{ env.registry_url }}
+          tags: |
+            type=sha,priority=900,prefix=
+            type=semver,priority=1000,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=ref,event=pr
+
+  steps:
+      - name: Check out the repo
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+      - name: Check out the PR commit head
+        uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
