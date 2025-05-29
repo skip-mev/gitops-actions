@@ -36,11 +36,12 @@ jobs:
       - name: Setup the pipeline
         uses: ./.github/actions/setup
         with:
-          environment: ${{ inputs.environment }}
-          tailscale_id: ${{ inputs.tailscale_id }}
-          tailscale_secret: ${{ inputs.tailscale_secret }}
-          aws_access_key_id: ${{ inputs.aws_access_key_id }}
-          aws_secret_access_key: ${{ inputs.aws_secret_access_key }}
+          test_secret: ${{ secrets.TEST_SECRET }}
+          # environment: ${{ inputs.environment }}
+          # tailscale_id: ${{ inputs.tailscale_id }}
+          # tailscale_secret: ${{ inputs.tailscale_secret }}
+          # aws_access_key_id: ${{ inputs.aws_access_key_id }}
+          # aws_secret_access_key: ${{ inputs.aws_secret_access_key }}
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
