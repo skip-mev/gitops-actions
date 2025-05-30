@@ -10,6 +10,11 @@ on:
         description: 'The suffix for the registry URL'
         required: true
         type: string
+      build_matrix:
+        description: 'Matrix of builds to run'
+        required: true
+        type: string
+        default: '[{"image": "typescript-server", "file": "typescript-server.dockerfile"}, {"image": "feeder", "file": "feeder.dockerfile"}]'
       # tailscale_id:
       #   description: 'Tailscale ID for the build'
       #   required: true
@@ -36,6 +41,9 @@ jobs:
       contents: read
     env:
       test_secret: ${{ secrets.TEST_SECRET }}
+    strategy:
+      matrix:
+        builds: ${{ fromJson(inputs.build_matrix) }}
     steps:
       - name: test secret
         run: echo "TEST_SECRET=$TEST_SECRET"
