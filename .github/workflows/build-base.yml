@@ -31,6 +31,9 @@ jobs:
   build:
     # TODO: what about different environments?
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
