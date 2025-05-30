@@ -2,33 +2,34 @@ name: Reusable docker build workflow
 on:
   workflow_call:
     inputs:
-      foo:
-        description: 'A placeholder input for the reusable workflow'
-        required: false
+      environment:
+        description: 'The environment to build for'
+        required: true
         type: string
-      # environment:
-      #   description: 'The environment to build for'
-      #   required: true
-      #   type: string
-      # tailscale_id:
-      #   description: 'Tailscale ID for the build'
-      #   required: true
-      #   type: string
-      # tailscale_secret:
-      #   description: 'Tailscale secret for the build'
-      #   required: true
-      #   type: string
-      # aws_access_key_id:
-      #   description: 'AWS Access Key ID for ECR access'
-      #   required: true
-      #   type: string
-      # aws_secret_access_key:
-      #   description: 'AWS Secret Access Key for ECR access'
-      #   required: true
-      #   type: string
+      registry_url:
+        description: 'The URL of the Docker registry to push to'
+        required: true
+        type: string
+      tailscale_id:
+        description: 'Tailscale ID for the build'
+        required: true
+        type: string
+      tailscale_secret:
+        description: 'Tailscale secret for the build'
+        required: true
+        type: string
+      aws_access_key_id:
+        description: 'AWS Access Key ID for ECR access'
+        required: true
+        type: string
+      aws_secret_access_key:
+        description: 'AWS Secret Access Key for ECR access'
+        required: true
+        type: string
 
 jobs:
   build:
+    # TODO: what about different environments?
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
@@ -36,18 +37,21 @@ jobs:
       - name: Setup the pipeline
         uses: ./.github/actions/setup
         with:
-          test_secret: ${{ secrets.TEST_SECRET }}
-          # environment: ${{ inputs.environment }}
-          # tailscale_id: ${{ inputs.tailscale_id }}
-          # tailscale_secret: ${{ inputs.tailscale_secret }}
-          # aws_access_key_id: ${{ inputs.aws_access_key_id }}
-          # aws_secret_access_key: ${{ inputs.aws_secret_access_key }}
+          environment: ${{ inputs.environment }}
+          tailscale_id: ${{ secrets.tailscale_id }}
+          tailscale_secret: ${{ secrets.tailscale_secret }}
+          aws_access_key_id: ${{ secrets.aws_access_key_id }}
+          aws_secret_access_key: ${{ secrets.aws_secret_access_key }}
+          ecr_url_prefix: ${{ secrets.ecr_url_prefix }}
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
       - name: Create ECR repository if it does not exist
         run: |
           aws ecr describe-repositories --region us-east-2 --repository-names $repo_name || aws ecr create-repository --repository-name $repo_name --region us-east-2
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -55,7 +59,7 @@ jobs:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: |
-            ${{ env.registry_url }}
+            ${{ inputs.registry_url }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
@@ -63,3 +67,12 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=branch
             type=ref,event=pr
+
+      - uses: cloudposse/github-action-matrix-outputs-write@v1
+        id: out
+        with:
+          matrix-step-name: github-action-matrix-outputs-read
+          matrix-key: ${{ matrix.builds.image }}
+          outputs: |-
+            version: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+            tag: ${{ steps.meta.outputs.version }}
