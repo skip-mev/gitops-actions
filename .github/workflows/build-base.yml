@@ -6,8 +6,8 @@ on:
         description: 'The environment to build for'
         required: true
         type: string
-      registry_url:
-        description: 'The URL of the Docker registry to push to'
+      registry_url_suffix:
+        description: 'The suffix for the registry URL'
         required: true
         type: string
       tailscale_id:
@@ -59,7 +59,7 @@ jobs:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: |
-            ${{ inputs.registry_url }}
+            ${{ secrets.ecr_url_prefix}}/${{ inputs.registry_url_suffix }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
