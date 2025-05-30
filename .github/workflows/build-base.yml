@@ -35,6 +35,9 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - name: test secret
+        run: echo "TEST_SECRET=${{ secrets.TEST_SECRET }}"
+
       - name: Check out the repo
         uses: actions/checkout@v3
 
