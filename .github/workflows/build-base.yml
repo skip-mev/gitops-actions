@@ -34,13 +34,6 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v3
 
-      # - name: Configure AWS Credentials
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     aws-region: us-east-2
-      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -71,10 +64,6 @@ jobs:
             type=semver,pattern={{major}}
             type=ref,event=branch
             type=ref,event=pr
-
-      - name: json-output-check
-        run: |
-          echo "meta output json: ${{ steps.meta.outputs.json }}"
 
       - name: Go Build Cache for Docker
         uses: actions/cache@v3
@@ -108,22 +97,6 @@ jobs:
           version=$(jq -r '.tags[0]' raw.json)
           echo "version=$version" >> $GITHUB_OUTPUT
 
-      # - name: check meta outputs
-      #   id: checkmeta
-      #   shell: bash
-      #   run: |
-      #     echo '${{ steps.meta.outputs.json }}' | jq -r '.tags[0]' > version.txt
-      #     VERSION=$(cat version.txt)
-      #     echo "version=$VERSION" >> $GITHUB_OUTPUT
-      #     # echo "meta output json: ${{ steps.meta.outputs.json }}"
-      #     # echo "meta output json fromJSON: ${{ fromJSON(steps.meta.outputs.json) }}"
-      #     # echo "meta output json fromJson tags: ${{ fromJSON(steps.meta.outputs.json).tags }}"
-      #     # echo "Docker tags: ${{ steps.meta.outputs.tags }}"
-      #     # echo "Docker labels: ${{ steps.meta.outputs.labels }}"
-      #     # echo "Docker version: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}"
-      #     # echo "Docker tag: ${{ steps.meta.outputs.version }}"
-
-
     outputs:
       docker_version: ${{ steps.extract.outputs.version }}
       docker_tag: ${{ steps.meta.outputs.version }}
@@ -132,11 +105,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - name: check check
-        run: |
-          echo "Docker tag: ${{ needs.build.outputs.docker_tag }}"
-          echo "Docker version: ${{ needs.build.outputs.docker_version }}"
-
       - name: Write matrix outputs
         uses: cloudposse/github-action-matrix-outputs-write@v1
         id: out
@@ -146,9 +114,7 @@ jobs:
           outputs: |-
             version: ${{ needs.build.outputs.docker_version }}
             tag: ${{ needs.build.outputs.docker_tag }}
-      - name: check
-        run: |
-          echo "Version: ${{ steps.out.outputs.result }}"
+
     outputs:
       version: ${{ fromJson(steps.out.outputs.result).version }}
       tag: ${{ fromJson(steps.out.outputs.result).tag }}
