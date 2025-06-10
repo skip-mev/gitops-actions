@@ -2,10 +2,10 @@ name: Reusable docker build workflow
 on:
   workflow_call:
     inputs:
-      environment:
-        description: 'The environment to build for'
-        required: true
-        type: string
+      # environment:
+      #   description: 'The environment to build for'
+      #   required: true
+      #   type: string
       registry_url_suffix:
         description: 'The suffix for the registry URL'
         required: true
