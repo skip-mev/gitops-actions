@@ -2,10 +2,6 @@ name: Reusable docker build workflow
 on:
   workflow_call:
     inputs:
-      # environment:
-      #   description: 'The environment to build for'
-      #   required: true
-      #   type: string
       registry_url_suffix:
         description: 'The suffix for the registry URL'
         required: true
@@ -31,6 +27,14 @@ jobs:
       contents: read
 
     steps:
+      - name: Show inputs
+        run: |
+          echo "Inputs:"
+          echo "  registry_url_suffix: ${{ inputs.registry_url_suffix }}"
+          echo "  matrix_step_name: ${{ inputs.matrix_step_name }}"
+          echo "  matrix_key: ${{ inputs.matrix_key }}"
+          echo "  docker_file_path: ${{ inputs.docker_file_path }}"
+
       - name: Check out the repo
         uses: actions/checkout@v3
 
