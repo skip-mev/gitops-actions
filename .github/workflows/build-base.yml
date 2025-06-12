@@ -6,10 +6,6 @@ on:
         description: 'The name of the image to build'
         required: true
         type: string
-      matrix_step_name:
-        description: 'The name of the matrix step'
-        required: false
-        type: string
       matrix_key:
         description: 'The key for the matrix'
         required: true
@@ -31,7 +27,6 @@ jobs:
         run: |
           echo "Inputs:"
           echo "  image_name: ${{ inputs.image_name }}"
-          echo "  matrix_step_name: ${{ inputs.matrix_step_name }}"
           echo "  matrix_key: ${{ inputs.matrix_key }}"
           echo "  docker_file_path: ${{ inputs.docker_file_path }}"
 
@@ -113,7 +108,7 @@ jobs:
         uses: cloudposse/github-action-matrix-outputs-write@v1
         id: out
         with:
-          matrix-step-name: ${{ inputs.matrix_step_name }}
+          matrix-step-name: build
           matrix-key: ${{ inputs.matrix_key }}
           outputs: |-
             version: ${{ needs.build.outputs.docker_version }}
