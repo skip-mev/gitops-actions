@@ -2,8 +2,8 @@ name: Reusable docker build workflow
 on:
   workflow_call:
     inputs:
-      registry_url_suffix:
-        description: 'The suffix for the registry URL'
+      image_name:
+        description: 'The name of the image to build'
         required: true
         type: string
       matrix_step_name:
@@ -30,7 +30,7 @@ jobs:
       - name: Show inputs
         run: |
           echo "Inputs:"
-          echo "  registry_url_suffix: ${{ inputs.registry_url_suffix }}"
+          echo "  image_name: ${{ inputs.image_name }}"
           echo "  matrix_step_name: ${{ inputs.matrix_step_name }}"
           echo "  matrix_key: ${{ inputs.matrix_key }}"
           echo "  docker_file_path: ${{ inputs.docker_file_path }}"
@@ -51,7 +51,7 @@ jobs:
 
       - name: Create ECR repository if it does not exist
         run: |
-          aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.registry_url_suffix }} || aws ecr create-repository --repository-name ${{ inputs.registry_url_suffix }} --region us-east-2
+          aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.image_name }} || aws ecr create-repository --repository-name ${{ inputs.image_name }} --region us-east-2
 
       - name: Docker meta
         id: meta
@@ -60,7 +60,7 @@ jobs:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: |
-            ${{ secrets.ecr_url_prefix}}/${{ inputs.registry_url_suffix }}
+            ${{ secrets.ecr_url_prefix}}/${{ inputs.image_name }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
