@@ -1,0 +1,116 @@
+name: Setup auth
+inputs:
+  environment:
+    description: 'Environment to deploy in'
+    required: false
+    default: 'dev'
+  service:
+    description: 'Service to deploy'
+    required: true
+  app_id:
+    description: "Deploy app ID"
+    required: true
+  app_private_key:
+    description: 'Deploy app private key'
+    required: true
+  manifests_repo:
+    description: 'Manifests repository'
+    required: true
+  values_file_name:
+    description: 'Values file name'
+    required: true
+  modified_values:
+    description: 'Modified values'
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/create-github-app-token@v1
+      id: app-token
+      with:
+        app-id: ${{ inputs.app_id }}
+        private-key: ${{ inputs.app_private_key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ inputs.manifests_repo }}
+    - name: Checkout manifests repo
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ github.repository_owner }}/${{ inputs.manifests_repo }}
+        token: ${{ steps.app-token.outputs.token }}
+        path: manifests
+        ref: plt-337-reusable-github-workflows
+    - name: Install yq
+      shell: bash
+      run: |
+        sudo wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64 -O /usr/bin/yq
+        sudo chmod +x /usr/bin/yq
+    - name: Update Helm values
+      if: inputs.environment == 'dev'
+      shell: bash
+      run: |
+        SERVICE_NAME=${{ inputs.service }}
+        IMAGE_TAG=${{ github.sha }}
+        cd manifests/$SERVICE_NAME
+
+        json_string="${{ inputs.modified_values }}"
+        json_string=$(echo $json_string | sed "s/'/\"/g")
+
+        # Generate update commands from JSON
+        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | .key + " |= \"" + .value + "\""' -o json)
+
+        # Apply each update command to the YAML file
+        echo "$updates" | while read -r update; do
+            if [[ ! -z "$update" ]]; then
+                echo $update
+                yq e -i "$update" ${{ inputs.values_file_name }}
+            fi
+        done
+
+        cat ${{ inputs.values_file_name }}
+
+        git config --global user.name "deployooooooooor[bot]"
+        git config --global user.email "deployooooooooor[bot]@users.noreply.github.com"
+        git add .
+        git commit -m "Update $SERVICE_NAME image to $IMAGE_TAG"
+        git push
+    - name: Update Helm values
+      shell: bash
+      if: inputs.environment != 'dev'
+      run: |
+        SERVICE_NAME=${{ inputs.service }}
+        IMAGE_TAG=${{ github.ref }}
+        cd manifests/$SERVICE_NAME
+
+        json_string="${{ inputs.modified_values }}"
+        json_string=$(echo $json_string | sed "s/'/\"/g")
+
+        # Generate update commands from JSON
+        updates=$(echo $json_string | yq -r e -f json '. | to_entries | .[] | .key + " |= \"" + .value + "\""' -o json)
+
+        # Apply each update command to the YAML file
+        echo "$updates" | while read -r update; do
+            if [[ ! -z "$update" ]]; then
+                echo $update
+                yq e -i "$update" ${{ inputs.values_file_name }}
+            fi
+        done
+
+        git config --global user.name "deployooooooooor[bot]"
+        git config --global user.email "deployooooooooor[bot]@users.noreply.github.com"
+
+        BRANCH_NAME="${{ inputs.environment }}-promote-${{ inputs.service }}-${{ github.ref }}"
+
+        git checkout -b $BRANCH_NAME
+
+        git add .
+        git commit -m --allow-empty "Update $SERVICE_NAME image to $IMAGE_TAG"
+        git push origin $BRANCH_NAME
+
+        echo "${{ steps.app-token.outputs.token }}" > token.txt
+        gh auth login --with-token < token.txt
+
+        gh pr create \
+          --body "Promoting ${{ inputs.service }} (version ${{ github.ref }}) to ${{ inputs.environment }}." \
+          --title "chore(${{ inputs.service }}): Promote to ${{ github.ref }}" \
+          --head "$BRANCH_NAME" \
+          --base "main"
