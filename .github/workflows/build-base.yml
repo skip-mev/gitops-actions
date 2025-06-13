@@ -37,7 +37,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: us-east-2
-          role-session-name: ${{ github.ref_name }}-build-dev
+          role-session-name: ${{ github.run_id }}
           role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
 
       - name: Login to Amazon ECR
@@ -108,7 +108,7 @@ jobs:
         uses: cloudposse/github-action-matrix-outputs-write@v1
         id: out
         with:
-          matrix-step-name: build
+          matrix-step-name: ${{ inputs.matrix_step_name }}
           matrix-key: ${{ inputs.matrix_key }}
           outputs: |-
             version: ${{ needs.build.outputs.docker_version }}
