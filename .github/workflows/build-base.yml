@@ -108,7 +108,7 @@ jobs:
         uses: cloudposse/github-action-matrix-outputs-write@v1
         id: out
         with:
-          matrix-step-name: ${{ inputs.matrix_step_name }}
+          matrix-step-name: build
           matrix-key: ${{ inputs.matrix_key }}
           outputs: |-
             version: ${{ needs.build.outputs.docker_version }}
