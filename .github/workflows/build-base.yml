@@ -31,6 +31,7 @@ jobs:
           version: v2.1
 
   build:
+    name: build-base
     runs-on: depot-ubuntu-22.04
     permissions:
       id-token: write
