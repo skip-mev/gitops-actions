@@ -111,8 +111,8 @@ jobs:
           matrix-step-name: build
           matrix-key: ${{ inputs.matrix_key }}
           outputs: |-
-            version: ${{ needs.build.outputs.docker_version }}
-            tag: ${{ needs.build.outputs.docker_tag }}
+            version: "${{ needs.build.outputs.docker_version }}"
+            tag: "${{ needs.build.outputs.docker_tag }}"
 
     outputs:
       version: ${{ fromJson(steps.out.outputs.result).version }}
