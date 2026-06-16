@@ -124,19 +124,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Persist the in-Dockerfile Go build cache mount across runs, per arch
-      # (each platform builds on its own runner, so caches never mix).
-      - name: Restore Go build cache
-        uses: actions/cache@v4
-        with:
-          path: go-build-cache
-          key: ${{ runner.os }}-${{ inputs.matrix_key }}-${{ env.PLATFORM_PAIR }}-go-build-${{ hashFiles('**/go.sum') }}
-
-      - name: Inject Go build cache into buildkit
-        uses: reproducible-containers/buildkit-cache-dance@v2.1.2
-        with:
-          cache-source: go-build-cache
-
       - name: Mint token for private module repos
         id: module-token
         if: ${{ inputs.private_module_repos != '' }}
