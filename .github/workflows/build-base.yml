@@ -14,6 +14,14 @@ on:
         description: 'The Dockerfile to use for the build'
         required: true
         type: string
+      private_module_repos:
+        description: >-
+          Space/comma-separated private repos (same owner) the build needs to
+          fetch, e.g. private Go modules. When set, a scoped GitHub App token is
+          minted and passed to the build as the "gh_token" BuildKit secret.
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -75,6 +83,16 @@ jobs:
         with:
           cache-source: go-build-cache
 
+      - name: Mint token for private module repos
+        id: module-token
+        if: ${{ inputs.private_module_repos != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SIGNER_APP_ID }}
+          private-key: ${{ secrets.SIGNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ inputs.private_module_repos }}
+
       - name: Build and push
         uses: depot/build-push-action@v1
         with:
@@ -84,6 +102,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           project: "06dnhndwwg"
           push: true
+          secrets: |
+            gh_token=${{ steps.module-token.outputs.token }}
 
       - name: Extract Docker version from tags
         id: extract
