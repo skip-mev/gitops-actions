@@ -61,9 +61,11 @@ jobs:
       - name: Compute build matrix from platforms
         id: set-matrix
         shell: bash
+        env:
+          PLATFORMS_INPUT: ${{ inputs.platforms }}
         run: |
           include='[]'
-          IFS=', ' read -ra PLATFORMS <<< "${{ inputs.platforms }}"
+          IFS=', ' read -ra PLATFORMS <<< "$PLATFORMS_INPUT"
           for p in "${PLATFORMS[@]}"; do
             [ -z "$p" ] && continue
             case "$p" in
@@ -124,6 +126,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # create-github-app-token only accepts comma/newline-separated repos, but
+      # the documented interface also allows spaces; normalize to commas here so
+      # callers following the docs don't silently get an empty token scope.
+      - name: Normalize private module repos
+        id: module-repos
+        if: ${{ inputs.private_module_repos != '' }}
+        shell: bash
+        env:
+          PRIVATE_MODULE_REPOS: ${{ inputs.private_module_repos }}
+        run: |
+          repos=$(printf '%s' "$PRIVATE_MODULE_REPOS" | tr -s ' \t\n,' ',' | sed 's/^,//; s/,$//')
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
       - name: Mint token for private module repos
         id: module-token
         if: ${{ inputs.private_module_repos != '' }}
@@ -132,7 +147,7 @@ jobs:
           app-id: ${{ secrets.SIGNER_APP_ID }}
           private-key: ${{ secrets.SIGNER_APP_PRIVATE_KEY }}
           owner: ${{ inputs.private_module_owner != '' && inputs.private_module_owner || github.repository_owner }}
-          repositories: ${{ inputs.private_module_repos }}
+          repositories: ${{ steps.module-repos.outputs.repos }}
 
       - name: Build and push by digest
         id: build
@@ -145,8 +160,9 @@ jobs:
           # Layer cache scoped per image + platform so nothing clobbers anything.
           cache-from: type=gha,scope=${{ inputs.matrix_key }}-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ inputs.matrix_key }}-${{ env.PLATFORM_PAIR }}
-          secrets: |
-            gh_token=${{ steps.module-token.outputs.token }}
+          # Only forward the token when one was actually minted; otherwise pass no
+          # secrets so an empty gh_token isn't mounted into every build.
+          secrets: ${{ inputs.private_module_repos != '' && format('gh_token={0}', steps.module-token.outputs.token) || '' }}
 
       - name: Export digest
         run: |
