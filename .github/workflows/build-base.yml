@@ -16,9 +16,17 @@ on:
         type: string
       private_module_repos:
         description: >-
-          Space/comma-separated private repos (same owner) the build needs to
-          fetch, e.g. private Go modules. When set, a scoped GitHub App token is
-          minted and passed to the build as the "gh_token" BuildKit secret.
+          Space/comma-separated private repos the build needs to fetch, e.g.
+          private Go modules. When set, a scoped GitHub App token is minted and
+          passed to the build as the "gh_token" BuildKit secret.
+        required: false
+        type: string
+        default: ''
+      private_module_owner:
+        description: >-
+          Org that owns private_module_repos. Defaults to this repo's owner; set
+          it when the private module lives in a different org (e.g. cosmos). The
+          GitHub App (SIGNER_APP_ID) must be installed on this org.
         required: false
         type: string
         default: ''
@@ -90,7 +98,7 @@ jobs:
         with:
           app-id: ${{ secrets.SIGNER_APP_ID }}
           private-key: ${{ secrets.SIGNER_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
+          owner: ${{ inputs.private_module_owner != '' && inputs.private_module_owner || github.repository_owner }}
           repositories: ${{ inputs.private_module_repos }}
 
       - name: Build and push
