@@ -257,4 +257,6 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect "${{ steps.extract.outputs.version }}"
+        env:
+          INSPECT_REF: ${{ steps.extract.outputs.version }}
+        run: docker buildx imagetools inspect "$INSPECT_REF"
