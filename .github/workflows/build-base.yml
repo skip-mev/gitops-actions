@@ -78,14 +78,14 @@ jobs:
           echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           aws-region: us-east-2
           role-session-name: ${{ github.run_id }}
           role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
 
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - name: Create ECR repository if it does not exist
         env:
@@ -108,7 +108,7 @@ jobs:
     name: build (${{ matrix.platform }})
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Prepare platform pair
         run: |
@@ -116,17 +116,17 @@ jobs:
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           aws-region: us-east-2
           role-session-name: ${{ github.run_id }}
           role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
 
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       # create-github-app-token only accepts comma/newline-separated repos, but
       # the documented interface also allows spaces; normalize to commas here so
@@ -139,12 +139,21 @@ jobs:
           PRIVATE_MODULE_REPOS: ${{ inputs.private_module_repos }}
         run: |
           repos=$(printf '%s' "$PRIVATE_MODULE_REPOS" | tr -s ' \t\n,' ',' | sed 's/^,//; s/,$//')
+          # A whitespace-only input is non-empty (so the steps run) but normalizes
+          # to nothing; an empty `repositories` makes create-github-app-token scope
+          # the token to every repo the app can access. Fail loudly instead.
+          if [ -z "$repos" ]; then
+            echo "::error::private_module_repos is set but contains no repository names after normalization; refusing to mint an all-repository-scoped token."
+            exit 1
+          fi
           echo "repos=$repos" >> "$GITHUB_OUTPUT"
 
       - name: Mint token for private module repos
         id: module-token
         if: ${{ inputs.private_module_repos != '' }}
-        uses: actions/create-github-app-token@v1
+        # Pinned to the v1 tag commit; this step handles SIGNER_APP_PRIVATE_KEY, so
+        # don't run a mutable tag here.
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         with:
           app-id: ${{ secrets.SIGNER_APP_ID }}
           private-key: ${{ secrets.SIGNER_APP_PRIVATE_KEY }}
@@ -153,7 +162,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: ${{ inputs.docker_file_path }}
@@ -173,7 +182,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.matrix_key }}-digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*
@@ -193,20 +202,20 @@ jobs:
       tag: ${{ steps.meta.outputs.version }}
     steps:
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           aws-region: us-east-2
           role-session-name: ${{ github.run_id }}
           role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
 
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: ${{ runner.temp }}/digests
           pattern: ${{ inputs.matrix_key }}-digests-*
@@ -214,7 +223,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         env:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
