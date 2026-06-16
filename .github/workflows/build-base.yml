@@ -38,6 +38,13 @@ on:
         required: false
         type: string
         default: linux/amd64
+    outputs:
+      tag:
+        description: 'Primary image tag of the pushed manifest (e.g. the commit sha).'
+        value: ${{ jobs.merge.outputs.tag }}
+      version:
+        description: 'Full primary image reference (registry/name:tag).'
+        value: ${{ jobs.merge.outputs.version }}
 
 jobs:
   # Turn the platforms string into a {platform, runner} matrix and make sure the
@@ -234,22 +241,3 @@ jobs:
 
       - name: Inspect manifest
         run: docker buildx imagetools inspect "${{ steps.extract.outputs.version }}"
-
-  write:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [merge]
-    steps:
-      - name: Write matrix outputs
-        uses: cloudposse/github-action-matrix-outputs-write@v1
-        id: out
-        with:
-          matrix-step-name: build
-          matrix-key: ${{ inputs.matrix_key }}
-          outputs: |-
-            version: ${{ needs.merge.outputs.version }}
-            tag: ${{ needs.merge.outputs.tag }}
-
-    outputs:
-      version: ${{ fromJson(steps.out.outputs.result).version }}
-      tag: ${{ fromJson(steps.out.outputs.result).tag }}
