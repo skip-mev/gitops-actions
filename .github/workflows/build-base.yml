@@ -88,9 +88,11 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Create ECR repository if it does not exist
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
         run: |
-          aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.image_name }} \
-            || aws ecr create-repository --repository-name ${{ inputs.image_name }} --region us-east-2
+          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME" \
+            || aws ecr create-repository --repository-name "$IMAGE_NAME" --region us-east-2
 
   # Build each platform natively (no emulation) and push it by digest.
   build:
@@ -230,10 +232,11 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+          IMAGE_REF: ${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}@sha256:%s ' *)
+            $(for d in *; do printf '%s@sha256:%s ' "$IMAGE_REF" "$d"; done)
 
       - name: Extract Docker version from tags
         id: extract
