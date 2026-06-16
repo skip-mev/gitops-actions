@@ -238,8 +238,10 @@ jobs:
       - name: Extract Docker version from tags
         id: extract
         shell: bash
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
         run: |
-          version=$(jq -r '.tags[0]' <<< '${{ steps.meta.outputs.json }}')
+          version=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Inspect manifest
