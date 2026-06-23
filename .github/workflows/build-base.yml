@@ -14,48 +14,221 @@ on:
         description: 'The Dockerfile to use for the build'
         required: true
         type: string
+      private_module_repos:
+        description: >-
+          Space/comma-separated private repos the build needs to fetch, e.g.
+          private Go modules. When set, a scoped GitHub App token is minted and
+          passed to the build as the "gh_token" BuildKit secret.
+        required: false
+        type: string
+        default: ''
+      private_module_owner:
+        description: >-
+          Org that owns private_module_repos. Defaults to this repo's owner; set
+          it when the private module lives in a different org (e.g. cosmos). The
+          GitHub App (SIGNER_APP_ID) must be installed on this org.
+        required: false
+        type: string
+        default: ''
+      platforms:
+        description: >-
+          Comma/space-separated target platforms, e.g. "linux/amd64,linux/arm64".
+          Each is built natively on its own runner (amd64 -> ubuntu-24.04,
+          arm64 -> ubuntu-24.04-arm) and merged into one manifest. No QEMU.
+        required: false
+        type: string
+        default: linux/amd64
+    outputs:
+      tag:
+        description: 'Primary image tag of the pushed manifest (e.g. the commit sha).'
+        value: ${{ jobs.merge.outputs.tag }}
+      version:
+        description: 'Full primary image reference (registry/name:tag).'
+        value: ${{ jobs.merge.outputs.version }}
 
 jobs:
-  build:
-    runs-on: depot-ubuntu-22.04
+  # Turn the platforms string into a {platform, runner} matrix and make sure the
+  # ECR repo exists before the parallel per-arch builds push to it.
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       id-token: write
       contents: read
-
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Show inputs
+      - name: Compute build matrix from platforms
+        id: set-matrix
+        shell: bash
+        env:
+          PLATFORMS_INPUT: ${{ inputs.platforms }}
         run: |
-          echo "Inputs:"
-          echo "  image_name: ${{ inputs.image_name }}"
-          echo "  matrix_key: ${{ inputs.matrix_key }}"
-          echo "  docker_file_path: ${{ inputs.docker_file_path }}"
-
-      - name: Check out the repo
-        uses: actions/checkout@v3
+          include='[]'
+          IFS=', ' read -ra PLATFORMS <<< "$PLATFORMS_INPUT"
+          for p in "${PLATFORMS[@]}"; do
+            [ -z "$p" ] && continue
+            case "$p" in
+              linux/amd64) runner="ubuntu-24.04" ;;
+              linux/arm64) runner="ubuntu-24.04-arm" ;;
+              *) echo "::error::Unsupported platform '$p' (expected linux/amd64 or linux/arm64)"; exit 1 ;;
+            esac
+            include=$(jq -cn --argjson acc "$include" --arg p "$p" --arg r "$runner" '$acc + [{platform: $p, runner: $r}]')
+          done
+          echo "matrix={\"include\":$include}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           aws-region: us-east-2
           role-session-name: ${{ github.run_id }}
           role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
 
       - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - name: Create ECR repository if it does not exist
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
         run: |
-          aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.image_name }} || aws ecr create-repository --repository-name ${{ inputs.image_name }} --region us-east-2
+          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME" \
+            || aws ecr create-repository --repository-name "$IMAGE_NAME" --region us-east-2
+
+  # Build each platform natively (no emulation) and push it by digest.
+  build:
+    needs: prepare
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    name: build (${{ matrix.platform }})
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Prepare platform pair
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-region: us-east-2
+          role-session-name: ${{ github.run_id }}
+          role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # create-github-app-token only accepts comma/newline-separated repos, but
+      # the documented interface also allows spaces; normalize to commas here so
+      # callers following the docs don't silently get an empty token scope.
+      - name: Normalize private module repos
+        id: module-repos
+        if: ${{ inputs.private_module_repos != '' }}
+        shell: bash
+        env:
+          PRIVATE_MODULE_REPOS: ${{ inputs.private_module_repos }}
+        run: |
+          repos=$(printf '%s' "$PRIVATE_MODULE_REPOS" | tr -s ' \t\n,' ',' | sed 's/^,//; s/,$//')
+          # A whitespace-only input is non-empty (so the steps run) but normalizes
+          # to nothing; an empty `repositories` makes create-github-app-token scope
+          # the token to every repo the app can access. Fail loudly instead.
+          if [ -z "$repos" ]; then
+            echo "::error::private_module_repos is set but contains no repository names after normalization; refusing to mint an all-repository-scoped token."
+            exit 1
+          fi
+          echo "repos=$repos" >> "$GITHUB_OUTPUT"
+
+      - name: Mint token for private module repos
+        id: module-token
+        if: ${{ inputs.private_module_repos != '' }}
+        # Pinned to the v1 tag commit; this step handles SIGNER_APP_PRIVATE_KEY, so
+        # don't run a mutable tag here.
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.SIGNER_APP_ID }}
+          private-key: ${{ secrets.SIGNER_APP_PRIVATE_KEY }}
+          owner: ${{ inputs.private_module_owner != '' && inputs.private_module_owner || github.repository_owner }}
+          repositories: ${{ steps.module-repos.outputs.repos }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ${{ inputs.docker_file_path }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }},push-by-digest=true,name-canonical=true,push=true
+          # Layer cache scoped per image + platform so nothing clobbers anything.
+          cache-from: type=gha,scope=${{ inputs.matrix_key }}-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.matrix_key }}-${{ env.PLATFORM_PAIR }}
+          # Only forward the token when one was actually minted; otherwise pass no
+          # secrets so an empty gh_token isn't mounted into every build.
+          secrets: ${{ inputs.private_module_repos != '' && format('gh_token={0}', steps.module-token.outputs.token) || '' }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ inputs.matrix_key }}-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Combine the per-arch digests into a single tagged multi-arch manifest.
+  merge:
+    needs: [prepare, build]
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-region: us-east-2
+          role-session-name: ${{ github.run_id }}
+          role-to-assume: arn:aws:iam::494494944992:role/GithubImagePusher
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Download digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: ${{ inputs.matrix_key }}-digests-*
+          merge-multiple: true
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         env:
           DOCKER_METADATA_PR_HEAD_SHA: true
         with:
           images: |
-            ${{ secrets.ecr_url_prefix}}/${{ inputs.image_name }}
+            ${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
@@ -64,56 +237,26 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
 
-      - name: Go Build Cache for Docker
-        uses: actions/cache@v3
-        with:
-          path: go-build-cache
-          key: ${{ runner.os }}-${{ inputs.matrix_key }}-go-build-cache-${{ hashFiles('**/go.sum') }}
-
-      - name: inject go-build-cache into docker
-        uses: reproducible-containers/buildkit-cache-dance@v2.1.2
-        with:
-          cache-source: go-build-cache
-
-      - name: Build and push
-        uses: depot/build-push-action@v1
-        with:
-          context: .
-          file: ${{ inputs.docker_file_path }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          project: "06dnhndwwg"
-          push: true
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+          IMAGE_REF: ${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(for d in *; do printf '%s@sha256:%s ' "$IMAGE_REF" "$d"; done)
 
       - name: Extract Docker version from tags
         id: extract
         shell: bash
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
         run: |
-          echo "Meta output JSON:"
-          echo '${{ steps.meta.outputs.json }}' > raw.json
-          jq '.' raw.json
+          version=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          version=$(jq -r '.tags[0]' raw.json)
-          echo "version=$version" >> $GITHUB_OUTPUT
-
-    outputs:
-      docker_version: ${{ steps.extract.outputs.version }}
-      docker_tag: ${{ steps.meta.outputs.version }}
-
-  write:
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - name: Write matrix outputs
-        uses: cloudposse/github-action-matrix-outputs-write@v1
-        id: out
-        with:
-          matrix-step-name: build
-          matrix-key: ${{ inputs.matrix_key }}
-          outputs: |-
-            version: ${{ needs.build.outputs.docker_version }}
-            tag: ${{ needs.build.outputs.docker_tag }}
-
-    outputs:
-      version: ${{ fromJson(steps.out.outputs.result).version }}
-      tag: ${{ fromJson(steps.out.outputs.result).tag }}
+      - name: Inspect manifest
+        env:
+          INSPECT_REF: ${{ steps.extract.outputs.version }}
+        run: docker buildx imagetools inspect "$INSPECT_REF"
