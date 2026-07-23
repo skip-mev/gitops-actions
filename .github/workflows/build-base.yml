@@ -46,6 +46,10 @@ on:
         description: 'Full primary image reference (registry/name:tag).'
         value: ${{ jobs.merge.outputs.version }}
 
+env:
+  CLK_DEV_ECR_REGISTRY: 894792044932.dkr.ecr.us-east-2.amazonaws.com
+  CLK_DEV_ROLE_ARN: arn:aws:iam::894792044932:role/GithubImagePusher
+
 jobs:
   # Turn the platforms string into a {platform, runner} matrix and make sure the
   # ECR repo exists before the parallel per-arch builds push to it.
@@ -211,6 +215,23 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
+      - name: Configure AWS Credentials (new CLK ECR)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-region: us-east-2
+          role-session-name: ${{ github.run_id }}-new
+          role-to-assume: ${{ env.CLK_DEV_ROLE_ARN }}
+
+      - name: Login to Amazon ECR (new CLK ECR)
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+
+      - name: Create ECR repository if it does not exist (new CLK ECR)
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME \
+            || aws ecr create-repository --repository-name "$IMAGE_NAME" --region us-east-2
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -229,6 +250,7 @@ jobs:
         with:
           images: |
             ${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}
+            ${{ env.CLK_DEV_ECR_REGISTRY }}/${{ inputs.image_name }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
