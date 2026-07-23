@@ -229,7 +229,7 @@ jobs:
         env:
           IMAGE_NAME: ${{ inputs.image_name }}
         run: |
-          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME \
+          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME" \
             || aws ecr create-repository --repository-name "$IMAGE_NAME" --region us-east-2
 
       - name: Set up Docker Buildx
