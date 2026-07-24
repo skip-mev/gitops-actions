@@ -15,6 +15,10 @@ on:
         required: true
         type: string
 
+env:
+  CLK_DEV_ECR_REGISTRY: 894792044932.dkr.ecr.us-east-2.amazonaws.com
+  CLK_DEV_ROLE_ARN: arn:aws:iam::894792044932:role/GithubImagePusher
+
 jobs:
   build:
     runs-on: depot-ubuntu-22.04
@@ -48,6 +52,19 @@ jobs:
         run: |
           aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.image_name }} || aws ecr create-repository --repository-name ${{ inputs.image_name }} --region us-east-2
 
+      - name: Configure AWS Credentials (new CLK ECR)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-2
+          role-to-assume: ${{ env.CLK_DEV_ROLE_ARN }}
+
+      - name: Login to Amazon ECR (new CLK ECR)
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Create ECR repository if it does not exist (new CLK ECR)
+        run: |
+          aws ecr describe-repositories --region us-east-2 --repository-names ${{ inputs.image_name }} || aws ecr create-repository --repository-name ${{ inputs.image_name }} --region us-east-2
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -56,6 +73,7 @@ jobs:
         with:
           images: |
             ${{ secrets.ecr_url_prefix}}/${{ inputs.image_name }}
+            ${{ env.CLK_DEV_ECR_REGISTRY }}/${{ inputs.image_name }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
