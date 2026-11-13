@@ -48,7 +48,10 @@ on:
 
 env:
   CLK_DEV_ECR_REGISTRY: 894792044932.dkr.ecr.us-east-2.amazonaws.com
-  CLK_DEV_ROLE_ARN: arn:aws:iam::894792044932:role/GithubImagePusher
+  CLK_DEV_ROLE_ARN: arn:aws:iam::894792044932:role/skip-dev-github-actions-ecr
+  # Prod ECR receives release builds only (v* tags).
+  CLK_PROD_ECR_REGISTRY: 623271127407.dkr.ecr.us-east-2.amazonaws.com
+  CLK_PROD_ROLE_ARN: arn:aws:iam::623271127407:role/skip-prod-github-actions-ecr
 
 jobs:
   # Turn the platforms string into a {platform, runner} matrix and make sure the
@@ -225,12 +228,17 @@ jobs:
       - name: Login to Amazon ECR (new CLK ECR)
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
-      - name: Create ECR repository if it does not exist (new CLK ECR)
-        env:
-          IMAGE_NAME: ${{ inputs.image_name }}
-        run: |
-          aws ecr describe-repositories --region us-east-2 --repository-names "$IMAGE_NAME" \
-            || aws ecr create-repository --repository-name "$IMAGE_NAME" --region us-east-2
+      - name: Configure AWS Credentials (CLK prod ECR)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-region: us-east-2
+          role-session-name: ${{ github.run_id }}-prod
+          role-to-assume: ${{ env.CLK_PROD_ROLE_ARN }}
+
+      - name: Login to Amazon ECR (CLK prod ECR)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -251,6 +259,7 @@ jobs:
           images: |
             ${{ secrets.ecr_url_prefix }}/${{ inputs.image_name }}
             ${{ env.CLK_DEV_ECR_REGISTRY }}/${{ inputs.image_name }}
+            name=${{ env.CLK_PROD_ECR_REGISTRY }}/${{ inputs.image_name }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: |
             type=sha,priority=900,prefix=
             type=semver,priority=1000,pattern={{version}}
